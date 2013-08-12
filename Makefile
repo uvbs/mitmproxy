@@ -1,5 +1,5 @@
 
-objects = proxy.o ProxyServer.o ProxyWorker.o ProxyHeaders.o ProxyAutoBuffer.o
+objects = proxy.o ProxyServer.o ProxyWorker.o ProxyHeaders.o ProxyAutoBuffer.o ProxyUri.o
 
 proxy : $(objects) 
 	c++ -o proxy $(objects) -L/Users/gao/libboost/ -lboost_thread -lboost_system -lboost_regex\
@@ -11,6 +11,7 @@ ProxyWorker.o: ProxyWorker.cpp ProxyWorker.h ProxyException.h ProxyHeaders.h Pro
 	c++ -Wno-deprecated-declarations -pthread -c ProxyWorker.cpp -o ProxyWorker.o
 ProxyHeaders.o: ProxyHeaders.h ProxyUri.h
 ProxyAutoBuffer.o: ProxyAutoBuffer.h ProxyException.h
+ProxyUri.o: ProxyUri.h
 
 .PHONY: clean
 clean: 

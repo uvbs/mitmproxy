@@ -26,11 +26,11 @@ ProxyServer::~ProxyServer()
 void workthread(int clientsock, size_t sn)
 {
     ProxyWorker worker(clientsock, sn);
-    worker();
+    worker.Run();
 }
 void ProxyServer::Run(int port, unsigned int maxconn)
 {
-    signal(SIGPIPE, SIG_IGN);   //客户端发送Request之后就断开连接，导致Broken_Pipe错误
+    signal(SIGPIPE, SIG_IGN);   //避免由于客户端发送Request之后就断开连接而导致的Broken_Pipe错误
 
     sockaddr_in sa;
     bzero(&sa, sizeof(sa));
@@ -57,18 +57,11 @@ void ProxyServer::Run(int port, unsigned int maxconn)
     {
         boost::this_thread::interruption_point();
         sockaddr clientaddr;
-        unsigned int salen = sizeof(clientaddr);
+        socklen_t salen = sizeof(clientaddr);
         int clientsock = accept(m_socket, &clientaddr, &salen);
-
         if (clientsock == 0)
             continue;
         boost::thread t(workthread, clientsock, sn++);
-        //t.join();
     }
     ProxyWorker::DeleteSSLCtx();
 }
-
-
-
-
-

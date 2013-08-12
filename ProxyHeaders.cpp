@@ -87,14 +87,14 @@ int RequestHeader::Parse(const char* data, unsigned int len)
     return header_length;
 }
 
-std::string RequestHeader::Dump()
+std::string RequestHeader::Dump() const
 {
     std::ostringstream ostr;
     ostr << method << " "
         << uri.Dump()<< " " 
         << version << "\r\n";
 
-    for (std::map<std::string, std::string>::iterator i = header.begin();
+    for (std::map<std::string, std::string>::const_iterator i = header.begin();
         i != header.end();
         ++i)
     {

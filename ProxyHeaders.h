@@ -1,5 +1,5 @@
-#ifndef __HEADER_H__
-#define __HEADER_H__
+#ifndef __PROXY_HEADER_H__
+#define __PROXY_HEADER_H__
 
 #include <string>
 #include <map>
@@ -19,7 +19,7 @@ struct RequestHeader
     size_t header_length;
 
     int Parse(const char* data, unsigned int len);
-    std::string Dump();
+    std::string Dump() const;
     void Clear();
     RequestHeader();
 };
@@ -34,11 +34,8 @@ struct ResponseHeader
     size_t header_length;
     
     int Parse(const char* data, unsigned int len);
-    std::string Dump();
     void Clear();
     ResponseHeader();
 };
-
-
 
 #endif //__HEADER_H__

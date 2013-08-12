@@ -5,7 +5,6 @@
 #include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <sys/select.h>
 #include <arpa/inet.h>
 #include <boost/date_time/local_time/local_time.hpp>
 #include <boost/regex.hpp>
@@ -16,8 +15,8 @@
 #include "ProxyException.h"
 
 static boost::mutex debugmu;
-#define debug(msg, sn) {debugmu.lock(); std::cout << "#" << sn << ": " << msg << std::endl; debugmu.unlock();}
-
+#define sndebug(msg) {debugmu.lock(); std::cout << "#" << m_sn << ": " << msg << std::endl; debugmu.unlock();}
+#define debug(msg) {debugmu.lock(); std::cout << msg << std::endl; debugmu.unlock();}
 static boost::mutex fdebugmu;
 #define fdebug(msg, sn)\
 {\
@@ -27,7 +26,6 @@ static boost::mutex fdebugmu;
     fs.close();\
     fdebugmu.unlock();\
 }
-
 
 template<typename T>
 T Min(T a, T b)
@@ -51,9 +49,9 @@ bool SameStringIgnoreCase(const std::string &s1, const std::string &s2)
     {
         if (s1[i] != s2[i])
         {
-            char big = Max(s1[i], s2[i]);
-            char small = Min(s1[i], s2[i]);
-            if ('a' <= big && big <= 'z' && big - offset == small)
+            char bigc = Max(s1[i], s2[i]);
+            char smallc = Min(s1[i], s2[i]);
+            if ('a' <= bigc && bigc <= 'z' && bigc - offset == smallc)
                 continue;
             else
                 return false;
@@ -66,25 +64,21 @@ int WorkerCount(int n)
 {
     static boost::mutex cntmu;
     static int cnt = 0;
-    static int max = 0;
+    static int max_cnt = 0;
     cntmu.lock();
     cnt += n;
-    max = max>cnt?max:cnt;
-    debug( "Workers " << cnt << "/" << max , "*")
+    max_cnt = max_cnt > cnt ? max_cnt : cnt;
+    debug( "Workers " << cnt << "/" << max_cnt)
     cntmu.unlock();
     return cnt;
 }
 
 bool IsIpAddr(const std::string &dn)
 {
-    boost::regex ippattern("^[\\d]{1,3}.[\\d]{1,3}.[\\d]{1,3}.[\\d]{1,3}$");
+    boost::regex ippattern("^[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}\\.[\\d]{1,3}$");
     boost::cmatch result;
     if(regex_match(dn.c_str(), result, ippattern))
-    {
-        for(int i=0; i<result.size(); i++)
-            std::cout << "str :" << result[i].str() << std::endl;
         return true;
-    }
     return false;
 }
 
@@ -97,7 +91,7 @@ char** GetIpAddr(const char * dn)
     }
     if (ph->h_addrtype != AF_INET)
     {
-        std::cout << "None ipv4 address" << std::endl;
+        debug("None ipv4 address")
         return NULL;
     }
     return ph->h_addr_list;
@@ -207,20 +201,20 @@ void ProxyWorker::InitSSLCtx()
     if (SSL_CTX_use_certificate_file(m_ctx, "Cert/cert.crt", SSL_FILETYPE_PEM) <= 0)
     {  
         ERR_print_errors_fp(stderr);  
-        std::cout<<"SSL_CTX_use_certificate_file error."<<std::endl;  
+        debug("SSL_CTX_use_certificate_file error.")  
         return;  
     }  
     if (SSL_CTX_use_PrivateKey_file(m_ctx, "Cert/privkey.pem", SSL_FILETYPE_PEM) <= 0)
     {  
         ERR_print_errors_fp(stderr);  
-        std::cout<<"SSL_CTX_use_PrivateKey_file error."<<std::endl;  
+        debug("SSL_CTX_use_PrivateKey_file error.")
         return;  
     }  
   
     if (!SSL_CTX_check_private_key(m_ctx))
     {  
         ERR_print_errors_fp(stderr);  
-        std::cout<<"SSL_CTX_check_private_key error."<<std::endl;  
+        debug("SSL_CTX_check_private_key error.")  
         return;  
     }
 }
@@ -247,12 +241,12 @@ size_t ProxyWorker::SSLRecv(SSL* ssl, char* buff, size_t sz)
     if (nread < 0)
     {
         if (errno == EAGAIN)
-            throw ProxyException(RECV_TIMEOUT, __func__);
+            throw ProxyException(RECV_TIMEOUT, __FUNCTION__);
         throw ProxyException(SSL_ERROR);
     }
     else if (nread == 0 && sz != 0)
     {
-        throw ProxyException(CONNECTION_SHUT_DOWN, __func__);
+        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
     }
     return nread;
 }
@@ -263,12 +257,12 @@ size_t ProxyWorker::SocketRecv(int sock, char* buff, size_t sz)
     if (nread < 0)
     {
         if (errno == EAGAIN)
-            throw ProxyException(RECV_TIMEOUT, __func__);
-        throw ProxyException(SOCKET_ERROR, __func__);
+            throw ProxyException(RECV_TIMEOUT, __FUNCTION__);
+        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
     }
     else if (nread == 0 && sz != 0)
     {
-        throw ProxyException(CONNECTION_SHUT_DOWN, __func__);
+        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
     }
     return nread;
 }
@@ -285,16 +279,16 @@ void ProxyWorker::SendTo(DIRECTION d, const char* buff, size_t len)
 void ProxyWorker::SSLSend(SSL* ssl, const char* buff, size_t len)
 {
     if (SSL_write (ssl, buff, len) < 0 )
-        throw ProxyException(SSL_ERROR, __func__);
+        throw ProxyException(SSL_ERROR, __FUNCTION__);
 }
 void ProxyWorker::SocketSend(int sock, const char* buff, size_t len)
 {
     int nsent = send(sock, buff, len, 0);
     if ( nsent < 0)
-        throw ProxyException(SOCKET_ERROR,  __func__);
+        throw ProxyException(SOCKET_ERROR,  __FUNCTION__);
     
     if ( nsent == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __func__);
+        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
 }
 
 void ProxyWorker::ConnectToHost()
@@ -310,9 +304,9 @@ void ProxyWorker::ConnectToHost()
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
-        throw ProxyException(SOCKET_ERROR, __func__);
+        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
     else if (sock == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __func__);
+        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
 
     host_addr.sin_family = AF_INET;
     host_addr.sin_port = htons(port);
@@ -338,7 +332,7 @@ void ProxyWorker::ConnectToHost()
                 throw ProxyException(DNS_FAILED);
 
             host_addr.sin_addr = *(struct in_addr *) ipaddrlist[i];
-            if (connect (sock, (sockaddr*) &host_addr, sizeof(host_addr)) == 0)
+            if (connect (sock, (sockaddr*) &host_addr, sizeof(host_addr)) < 0)
                 break;
         }
     }
@@ -355,10 +349,10 @@ void ProxyWorker::ConnectToHost()
         m_ctx_mutex.unlock();
 
         if ( m_hostssl == NULL)
-            throw ProxyException(SSL_ERROR, __func__);
+            throw ProxyException(SSL_ERROR, __FUNCTION__);
         SSL_set_fd (m_hostssl, m_hostsock);  
         if (SSL_connect (m_hostssl) < 0)
-            throw ProxyException(SSL_ERROR, __func__);  
+            throw ProxyException(SSL_ERROR, __FUNCTION__);  
     }
 }
 
@@ -377,9 +371,9 @@ void ProxyWorker::MethodConnect()
     sprintf(buff, "HTTP/1.1 200 Connection established\r\n\r\n");
     ret = send(m_clientsock, buff, strlen(buff), 0);
     if (ret < 0)
-        throw ProxyException(SOCKET_ERROR, __func__);
+        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
     else if (ret == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __func__);
+        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
 
     if(m_bssl)
     {
@@ -388,9 +382,7 @@ void ProxyWorker::MethodConnect()
         m_ctx_mutex.unlock();
         if (m_clientssl == NULL)
             throw ProxyException(SSL_ERROR);
-
         SSL_set_fd (m_clientssl, m_clientsock);
-
         ret = SSL_accept(m_clientssl);
         if (ret == 0)
         {
@@ -406,7 +398,7 @@ void ProxyWorker::MethodConnect()
 void ProxyWorker::RewriteRequest()
 {
     AutoBuffer buff;
-    buff.CopyFrom(m_buff);
+    buff.CopyFrom(m_buffer);
     if (m_request.header.find("Proxy-Connection") != m_request.header.end())
     {
         if (m_request.header.find("Connection") != m_request.header.end())
@@ -420,10 +412,10 @@ void ProxyWorker::RewriteRequest()
     }
 
     std::string reqh = m_request.Dump();
-    m_buff.Reset();
-    m_buff.Append(reqh.c_str(), reqh.size());
+    m_buffer.Reset();
+    m_buffer.Append(reqh.c_str(), reqh.size());
     if (buff.Len() > m_request.header_length)
-        m_buff.Append(buff.Ptr() + m_request.header_length, buff.Len() - m_request.header_length);
+        m_buffer.Append(buff.Ptr() + m_request.header_length, buff.Len() - m_request.header_length);
 }
 
 void ProxyWorker::RecvCompleteRequest()
@@ -432,23 +424,23 @@ void ProxyWorker::RecvCompleteRequest()
     int parse_ret;
     char buff[2048];
     bool header_ok = false;
-    m_buff.Reset();
+    m_buffer.Reset();
     while(1)
     {
         nread = RecvFrom(CLIENT, buff, sizeof buff);
-        m_buff.Append(buff, nread);
+        m_buffer.Append(buff, nread);
 
         if ( !header_ok )
         {
-            parse_ret = m_request.Parse(m_buff.Ptr(), m_buff.Len());
+            parse_ret = m_request.Parse(m_buffer.Ptr(), m_buffer.Len());
             if (parse_ret == PARSE_WRONG_FORMAT)
-                throw ProxyException(HTTP_FORMAT_ERROR, __func__);
+                throw ProxyException(HTTP_FORMAT_ERROR, __FUNCTION__);
             else if (parse_ret == PARSE_IMCOMPLETE_HEADER)
                 continue;
 
             header_ok = true;
         }
-        if (IsHttpDataCompleted(m_request.header, m_buff.Ptr() + parse_ret, m_buff.Len() - parse_ret))
+        if (IsHttpDataCompleted(m_request.header, m_buffer.Ptr() + parse_ret, m_buffer.Len() - parse_ret))
             break;
     }
 }
@@ -459,25 +451,25 @@ void ProxyWorker::TransferResponse()
     int parse_ret;
     char buff[2048];
     bool header_ok = false;
-    m_buff.Reset();
+    m_buffer.Reset();
     while(1)
     {
         nread = RecvFrom(HOST, buff, sizeof buff);
         SendTo(CLIENT, buff, nread);    //收到内容直接转到客户端，
-        m_buff.Append(buff, nread);     //复制到Buffer中，重组整个Http消息，用于判断是否结束。
+        m_buffer.Append(buff, nread);     //复制到Buffer中，重组整个Http消息，用于判断是否结束。
 
         if ( !header_ok )
         {
-            parse_ret = m_response.Parse(m_buff.Ptr(), m_buff.Len());
+            parse_ret = m_response.Parse(m_buffer.Ptr(), m_buffer.Len());
             if (parse_ret == PARSE_WRONG_FORMAT)
-                throw ProxyException(HTTP_FORMAT_ERROR, __func__);
+                throw ProxyException(HTTP_FORMAT_ERROR, __FUNCTION__);
             else if (parse_ret == PARSE_IMCOMPLETE_HEADER)
                 continue;
 
             header_ok = true;
         }
 
-        if (IsHttpDataCompleted(m_response.header, m_buff.Ptr() + parse_ret, m_buff.Len() - parse_ret))
+        if (IsHttpDataCompleted(m_response.header, m_buffer.Ptr() + parse_ret, m_buffer.Len() - parse_ret))
             break;
     }
 }
@@ -487,23 +479,28 @@ bool ProxyWorker::IsKeepAlive()
     if (m_request.header.find("Connection") != m_request.header.end()
         && SameStringIgnoreCase(m_request.header["Connection"], "Close"))
     {
-        debug("    >Connection:" << " " << m_request.header["Connection"], m_sn)
+        sndebug("    >Connection:" << " " << m_request.header["Connection"])
         return false;
     }
 
     if (m_request.header.find("Proxy-Connection") != m_request.header.end()
         && SameStringIgnoreCase(m_request.header["Proxy-Connection"], "Close"))
     {
-        debug("    >Proxy-Connection:" << " " << m_request.header["Proxy-Connection"], m_sn)
+        sndebug("    >Proxy-Connection:" << " " << m_request.header["Proxy-Connection"])
         return false;
     }
 
     if (m_response.header.find("Connection") != m_response.header.end()
         && SameStringIgnoreCase(m_response.header["Connection"], "Close"))
     {
-        debug("    <Connection:" << " " << m_response.header["Connection"], m_sn)
+        sndebug("    <Connection:" << " " << m_response.header["Connection"])
         return false;
     }
+
+    if (m_request.header.find("Connection") == m_request.header.end()
+        && m_request.header.find("Proxy-Connection") == m_request.header.end()
+        && m_request.version == "HTTP/1.0")
+        return false;
 
     return true;
 }
@@ -513,8 +510,7 @@ void ProxyWorker::Run()
     try
     {
         RecvCompleteRequest();
-        debug("> " << m_request.method << " " << m_request.uri.Dump(true), m_sn)
-        
+        sndebug("> " << m_request.method << " " << m_request.uri.Dump(true))
         if (m_request.method == "CONNECT")
         {
             if ( m_request.uri.scheme == "https" || m_request.uri.port == 443 )
@@ -522,34 +518,28 @@ void ProxyWorker::Run()
             MethodConnect();
             RecvCompleteRequest();
         }
-
         ConnectToHost();
         m_last_connected_host = m_request.header["Host"];
         RewriteRequest();
-        SendTo(HOST, m_buff.Ptr(), m_buff.Len());
-
+        SendTo(HOST, m_buffer.Ptr(), m_buffer.Len());
         TransferResponse();
-        debug("< " << m_response.code, m_sn)
+        sndebug("< " << m_response.code)
         while(IsKeepAlive())
         {
             RecvCompleteRequest();
-            
             if (m_last_connected_host != m_request.header["Host"])
             {
-                debug("change host from '" << m_last_connected_host << "'' to '" << m_request.header["Host"] << "'", m_sn)
+                sndebug("change host from '" << m_last_connected_host << "'' to '" << m_request.header["Host"] << "'")
                 CloseConnectionToHost();
                 ConnectToHost();
                 m_last_connected_host = m_request.header["Host"];
             }
-            debug(">> " << m_request.method << " " << m_request.uri.Dump(true), m_sn)
-            
+            sndebug(">> " << m_request.method << " " << m_request.uri.Dump(true))
             RewriteRequest();
-            SendTo(HOST, m_buff.Ptr(), m_buff.Len());
-
+            SendTo(HOST, m_buffer.Ptr(), m_buffer.Len());
             TransferResponse();
-            debug("<< " << m_response.code, m_sn)
-        }
-            
+            sndebug("<< " << m_response.code)
+        } 
     }
     catch(ProxyException& e)
     {
@@ -559,24 +549,23 @@ void ProxyWorker::Run()
             char szErrMsg[1024] = {0};
             char *pTmp = NULL;
             pTmp = ERR_error_string(ulErr,szErrMsg);
-            debug("ssl error: " << " code: " << ulErr << " " << pTmp << " " << e.what(), m_sn)
+            sndebug("ssl error: " << " code: " << ulErr << " " << pTmp << " " << e.what())
         }
         else if (e.code() == SOCKET_ERROR)
         {
-            debug("socket error: " << strerror(errno) << " " << e.what(), m_sn)
+            sndebug("socket error: " << strerror(errno) << " " << e.what())
         }
         else if (e.code() == CONNECTION_SHUT_DOWN)
         {
-            debug("connection shut dwon. " << e.what(), m_sn)
+            sndebug("connection shut dwon. " << e.what())
         }
         else
         {
-            debug("error " << e.code() << " " << e.what() , m_sn);
+            sndebug("error " << e.code() << " " << e.what());
         }
-
     }
     catch(...)
     {
-        debug("Unknow Exception", m_sn)
+        sndebug("Unknow Exception")
     }
 }

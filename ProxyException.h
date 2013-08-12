@@ -14,7 +14,7 @@ public:
     inline ~ProxyException() throw() {}
 
     inline const char* what() const throw() {return m_description.c_str();}
-    inline int code() {return m_code;}
+    inline int code() const {return m_code;}
 private:
     std::string m_description;
     int m_code;

@@ -13,7 +13,6 @@ typedef struct ssl_st SSL;
 struct ssl_ctx_st;
 typedef struct ssl_ctx_st SSL_CTX;
 
-
 class ProxyWorker
 {
 public:
@@ -78,7 +77,7 @@ private:
     int m_hostsock;
     static const unsigned int INIT_BUFF_SIZE = 4096;
     std::string m_last_connected_host;
-    AutoBuffer m_buff;
+    AutoBuffer m_buffer;
     size_t m_sn;
 };
 

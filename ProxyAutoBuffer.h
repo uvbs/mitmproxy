@@ -8,10 +8,10 @@ class AutoBuffer
 public:
     AutoBuffer();
     ~AutoBuffer();
-    const char* Ptr() {return buf;}
-    size_t Len() {return buflen;}
+    inline const char* Ptr() const {return buf;}
+    inline size_t Len() const {return buflen;}
     void Append(const char* data, size_t len);
-    void Reset() {buflen = 0;}
+    inline void Reset() {buflen = 0;}
     void CopyFrom(AutoBuffer &buffer);
 private:
     char* buf;
