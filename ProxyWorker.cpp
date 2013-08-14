@@ -305,8 +305,6 @@ void ProxyWorker::ConnectToHost()
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
         throw ProxyException(SOCKET_ERROR, __FUNCTION__);
-    else if (sock == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
 
     host_addr.sin_family = AF_INET;
     host_addr.sin_port = htons(port);
@@ -332,7 +330,7 @@ void ProxyWorker::ConnectToHost()
                 throw ProxyException(DNS_FAILED);
 
             host_addr.sin_addr = *(struct in_addr *) ipaddrlist[i];
-            if (connect (sock, (sockaddr*) &host_addr, sizeof(host_addr)) < 0)
+            if (connect (sock, (sockaddr*) &host_addr, sizeof(host_addr)) == 0)
                 break;
         }
     }
@@ -411,7 +409,7 @@ void ProxyWorker::RewriteRequest()
         m_request.header.erase("Connection");
     }
 
-    std::string reqh = m_request.Dump();
+    std::string reqh = m_request.ToString();
     m_buffer.Reset();
     m_buffer.Append(reqh.c_str(), reqh.size());
     if (buff.Len() > m_request.header_length)
@@ -510,7 +508,7 @@ void ProxyWorker::Run()
     try
     {
         RecvCompleteRequest();
-        sndebug("> " << m_request.method << " " << m_request.uri.Dump(true))
+        sndebug("> " << m_request.method << " " << m_request.uri.ToString(true))
         if (m_request.method == "CONNECT")
         {
             if ( m_request.uri.scheme == "https" || m_request.uri.port == 443 )
@@ -534,7 +532,7 @@ void ProxyWorker::Run()
                 ConnectToHost();
                 m_last_connected_host = m_request.header["Host"];
             }
-            sndebug(">> " << m_request.method << " " << m_request.uri.Dump(true))
+            sndebug(">> " << m_request.method << " " << m_request.uri.ToString(true))
             RewriteRequest();
             SendTo(HOST, m_buffer.Ptr(), m_buffer.Len());
             TransferResponse();

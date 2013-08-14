@@ -45,22 +45,17 @@ public:
 
 private:
     inline DIRECTION ReverseDirection(DIRECTION d) {return d == NONE ? NONE : (d == HOST ? CLIENT : HOST);}
-
     size_t RecvFrom(DIRECTION dir, char* buff, size_t sz);
     size_t SSLRecv(SSL* ssl, char* buff, size_t sz);
     size_t SocketRecv(int sock, char* buff, size_t sz);
-
     void SendTo(DIRECTION dir, const char* buff, size_t len);
     void SSLSend(SSL* ssl, const char* buff, size_t len);
     void SocketSend(int sock, const char* buff, size_t len);
-
     bool IsKeepAlive();
-
     void ConnectToHost();
     void CloseConnectionToHost();
     void MethodConnect();
     void RewriteRequest();
-
     void RecvCompleteRequest();
     void TransferResponse();
 

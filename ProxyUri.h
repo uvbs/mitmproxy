@@ -14,7 +14,7 @@ struct Uri
     Uri();
     Uri(const Uri &uri);
     Uri& operator= (const Uri& uri);
-    std::string Dump(bool dump_abs_uri = false) const;
+    std::string ToString(bool abs_uri = false) const;
     std::string GetDomainName() const;
 };
 

@@ -52,10 +52,10 @@ Uri& Uri::operator= (const Uri& uri)
     return *this;
 }
 
-std::string Uri::Dump(bool dump_abs_uri) const
+std::string Uri::ToString(bool abs_uri) const
 {
     std::ostringstream ostr;
-    if (dump_abs_uri)
+    if (abs_uri)
     {
         if (scheme != "")
             ostr << scheme + "://";

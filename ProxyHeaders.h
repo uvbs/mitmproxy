@@ -19,7 +19,7 @@ struct RequestHeader
     size_t header_length;
 
     int Parse(const char* data, unsigned int len);
-    std::string Dump() const;
+    std::string ToString() const;
     void Clear();
     RequestHeader();
 };
