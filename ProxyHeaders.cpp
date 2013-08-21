@@ -27,7 +27,7 @@ int RequestHeader::Parse(const char* data, unsigned int len)
         {
             if ((seg = line.find_first_of(" ")) == std::string::npos)
             {
-                if (datastream.tellg() == len)
+                if (datastream.eof() || datastream.tellg() == len)
                     return PARSE_IMCOMPLETE_HEADER;
                 else
                     return PARSE_WRONG_FORMAT;
@@ -38,7 +38,7 @@ int RequestHeader::Parse(const char* data, unsigned int len)
             seg = line.find_first_of(" ");
             if ((seg = line.find_first_of(" ")) == std::string::npos)
             {
-                if (datastream.tellg() == len)
+                if (datastream.eof() || datastream.tellg() == len)
                     return PARSE_IMCOMPLETE_HEADER;
                 else
                     return PARSE_WRONG_FORMAT;
@@ -62,7 +62,7 @@ int RequestHeader::Parse(const char* data, unsigned int len)
                 seg = line.find_first_of(":");
                 if (seg == std::string::npos)
                 {
-                    if (datastream.tellg() == len)
+                    if (datastream.eof() || datastream.tellg() == len)
                         return PARSE_IMCOMPLETE_HEADER;
                     else
                         return PARSE_WRONG_FORMAT;
@@ -78,7 +78,7 @@ int RequestHeader::Parse(const char* data, unsigned int len)
 
     if (!bHeaderParsed)
     {
-        if (datastream.tellg() == len)
+        if (datastream.eof() || datastream.tellg() == len)
             return PARSE_IMCOMPLETE_HEADER;
         else
             return PARSE_WRONG_FORMAT;
@@ -130,7 +130,7 @@ int ResponseHeader::Parse(const char* data, unsigned int len)
         {
             if ((seg = line.find_first_of(" ")) == std::string::npos)
             {
-                if (datastream.tellg() == len)
+                if (datastream.eof() || datastream.tellg() == len)
                     return PARSE_IMCOMPLETE_HEADER;
                 else
                     return PARSE_WRONG_FORMAT;
@@ -140,7 +140,7 @@ int ResponseHeader::Parse(const char* data, unsigned int len)
 
             if ((seg = line.find_first_of(" ")) == std::string::npos)
             {
-                if (datastream.tellg() == len)
+                if (datastream.eof() || datastream.tellg() == len)
                     return PARSE_IMCOMPLETE_HEADER;
                 else
                     return PARSE_WRONG_FORMAT;
@@ -163,7 +163,7 @@ int ResponseHeader::Parse(const char* data, unsigned int len)
                 seg = line.find_first_of(":");
                 if (seg == std::string::npos)
                 {
-                    if (datastream.tellg() == len)
+                    if (datastream.eof() || datastream.tellg() == len)
                         return PARSE_IMCOMPLETE_HEADER;
                     else
                         return PARSE_WRONG_FORMAT;
@@ -178,7 +178,7 @@ int ResponseHeader::Parse(const char* data, unsigned int len)
     }
     if (!bHeaderParsed)
     {
-        if (datastream.tellg() == len)
+        if (datastream.eof() || datastream.tellg() == len)
             return PARSE_IMCOMPLETE_HEADER;
         else
             return PARSE_WRONG_FORMAT;

@@ -6,14 +6,17 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-#include <boost/date_time/local_time/local_time.hpp>
 #include <boost/regex.hpp>
 #include <openssl/bio.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include "ProxyWorker.h"
 #include "ProxyException.h"
+#include "ProxyController.h"
 
+
+//#define DEBUG
+#ifdef DEBUG
 static boost::mutex debugmu;
 #define sndebug(msg) {debugmu.lock(); std::cout << "#" << m_sn << ": " << msg << std::endl; debugmu.unlock();}
 #define debug(msg) {debugmu.lock(); std::cout << msg << std::endl; debugmu.unlock();}
@@ -26,6 +29,11 @@ static boost::mutex fdebugmu;
     fs.close();\
     fdebugmu.unlock();\
 }
+#else
+#define sndebug(msg) 
+#define debug(msg) 
+#define fdebug(msg, sn)
+#endif
 
 template<typename T>
 T Min(T a, T b)
@@ -118,7 +126,7 @@ bool IsChunkEnded(const char* p, int len)
 
 bool IsHttpDataCompleted(std::map<std::string, std::string> &header, const char* content, size_t len)
 {
-    bool bchunked;
+    bool bchunked = false;
     size_t contentlen;
     if (header.find("Transfer-Encoding") != header.end()
             && header["Transfer-Encoding"] == "chunked")
@@ -142,7 +150,7 @@ boost::mutex ProxyWorker::m_ctx_mutex;
 
 ProxyWorker::ProxyWorker(int clientsock):
     m_clientsock(clientsock),
-    m_wanna_stop(false),
+    m_running(true),
     m_clientssl(NULL),
     m_hostssl(NULL),
     m_hostsock(0),
@@ -156,7 +164,7 @@ ProxyWorker::ProxyWorker(int clientsock):
 
 ProxyWorker::ProxyWorker(int clientsock, size_t sn):
     m_clientsock(clientsock),
-    m_wanna_stop(false),
+    m_running(true),
     m_clientssl(NULL),
     m_hostssl(NULL),
     m_hostsock(0),
@@ -225,6 +233,30 @@ void ProxyWorker::DeleteSSLCtx()
         SSL_CTX_free(m_ctx);
 }
 
+void ProxyWorker::ShutDown()
+{
+    if (m_clientsock)
+    {
+        close(m_clientsock);
+        m_clientsock = 0;
+    }
+    if (m_hostsock)
+    {
+        close(m_hostsock);
+        m_hostsock = 0;
+    }
+    if (m_clientssl)
+    {
+        SSL_free(m_clientssl);
+        m_clientssl = NULL;
+    }
+    if (m_hostssl)
+    {
+        SSL_free(m_hostssl);
+        m_hostssl = NULL;
+    }
+}
+
 size_t ProxyWorker::RecvFrom(DIRECTION d, char* buff, size_t sz)
 {
     if (d == NONE)
@@ -241,12 +273,12 @@ size_t ProxyWorker::SSLRecv(SSL* ssl, char* buff, size_t sz)
     if (nread < 0)
     {
         if (errno == EAGAIN)
-            throw ProxyException(RECV_TIMEOUT, __FUNCTION__);
-        throw ProxyException(SSL_ERROR);
+            throw ProxyException(PWE_RECV_TIMEOUT, __FUNCTION__);
+        throw ProxyException(PWE_SSL_ERROR);
     }
     else if (nread == 0 && sz != 0)
     {
-        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
+        throw ProxyException(PWE_CONNECTION_SHUT_DOWN, __FUNCTION__);
     }
     return nread;
 }
@@ -257,12 +289,12 @@ size_t ProxyWorker::SocketRecv(int sock, char* buff, size_t sz)
     if (nread < 0)
     {
         if (errno == EAGAIN)
-            throw ProxyException(RECV_TIMEOUT, __FUNCTION__);
-        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
+            throw ProxyException(PWE_RECV_TIMEOUT, __FUNCTION__);
+        throw ProxyException(PWE_SOCKET_ERROR, __FUNCTION__);
     }
     else if (nread == 0 && sz != 0)
     {
-        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
+        throw ProxyException(PWE_CONNECTION_SHUT_DOWN, __FUNCTION__);
     }
     return nread;
 }
@@ -279,16 +311,16 @@ void ProxyWorker::SendTo(DIRECTION d, const char* buff, size_t len)
 void ProxyWorker::SSLSend(SSL* ssl, const char* buff, size_t len)
 {
     if (SSL_write (ssl, buff, len) < 0 )
-        throw ProxyException(SSL_ERROR, __FUNCTION__);
+        throw ProxyException(PWE_SSL_ERROR, __FUNCTION__);
 }
 void ProxyWorker::SocketSend(int sock, const char* buff, size_t len)
 {
     int nsent = send(sock, buff, len, 0);
     if ( nsent < 0)
-        throw ProxyException(SOCKET_ERROR,  __FUNCTION__);
+        throw ProxyException(PWE_SOCKET_ERROR,  __FUNCTION__);
     
     if ( nsent == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
+        throw ProxyException(PWE_CONNECTION_SHUT_DOWN, __FUNCTION__);
 }
 
 void ProxyWorker::ConnectToHost()
@@ -304,7 +336,7 @@ void ProxyWorker::ConnectToHost()
 
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0)
-        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
+        throw ProxyException(PWE_SOCKET_ERROR, __FUNCTION__);
 
     host_addr.sin_family = AF_INET;
     host_addr.sin_port = htons(port);
@@ -322,12 +354,12 @@ void ProxyWorker::ConnectToHost()
             m_request.uri.absuri.c_str() : m_request.header["Host"].c_str());
 
         if (!ipaddrlist)
-            throw ProxyException(DNS_FAILED);
+            throw ProxyException(PWE_DNS_FAILED);
 
         for(int i = 0; ; ++i)
         {
             if (ipaddrlist[i] == NULL)
-                throw ProxyException(DNS_FAILED);
+                throw ProxyException(PWE_DNS_FAILED);
 
             host_addr.sin_addr = *(struct in_addr *) ipaddrlist[i];
             if (connect (sock, (sockaddr*) &host_addr, sizeof(host_addr)) == 0)
@@ -347,10 +379,10 @@ void ProxyWorker::ConnectToHost()
         m_ctx_mutex.unlock();
 
         if ( m_hostssl == NULL)
-            throw ProxyException(SSL_ERROR, __FUNCTION__);
+            throw ProxyException(PWE_SSL_ERROR, __FUNCTION__);
         SSL_set_fd (m_hostssl, m_hostsock);  
         if (SSL_connect (m_hostssl) < 0)
-            throw ProxyException(SSL_ERROR, __FUNCTION__);  
+            throw ProxyException(PWE_SSL_ERROR, __FUNCTION__);  
     }
 }
 
@@ -369,9 +401,9 @@ void ProxyWorker::MethodConnect()
     sprintf(buff, "HTTP/1.1 200 Connection established\r\n\r\n");
     ret = send(m_clientsock, buff, strlen(buff), 0);
     if (ret < 0)
-        throw ProxyException(SOCKET_ERROR, __FUNCTION__);
+        throw ProxyException(PWE_SOCKET_ERROR, __FUNCTION__);
     else if (ret == 0)
-        throw ProxyException(CONNECTION_SHUT_DOWN, __FUNCTION__);
+        throw ProxyException(PWE_CONNECTION_SHUT_DOWN, __FUNCTION__);
 
     if(m_bssl)
     {
@@ -379,16 +411,16 @@ void ProxyWorker::MethodConnect()
         m_clientssl = SSL_new(m_ctx);
         m_ctx_mutex.unlock();
         if (m_clientssl == NULL)
-            throw ProxyException(SSL_ERROR);
+            throw ProxyException(PWE_SSL_ERROR);
         SSL_set_fd (m_clientssl, m_clientsock);
         ret = SSL_accept(m_clientssl);
         if (ret == 0)
         {
-            throw ProxyException( CONNECTION_SHUT_DOWN );
+            throw ProxyException( PWE_CONNECTION_SHUT_DOWN );
         }
         else if (ret < 0)
         {
-            throw ProxyException(SSL_ERROR);
+            throw ProxyException(PWE_SSL_ERROR);
         }
     }
 }
@@ -432,7 +464,7 @@ void ProxyWorker::RecvCompleteRequest()
         {
             parse_ret = m_request.Parse(m_buffer.Ptr(), m_buffer.Len());
             if (parse_ret == PARSE_WRONG_FORMAT)
-                throw ProxyException(HTTP_FORMAT_ERROR, __FUNCTION__);
+                throw ProxyException(PWE_HTTP_FORMAT_ERROR, __FUNCTION__);
             else if (parse_ret == PARSE_IMCOMPLETE_HEADER)
                 continue;
 
@@ -441,6 +473,7 @@ void ProxyWorker::RecvCompleteRequest()
         if (IsHttpDataCompleted(m_request.header, m_buffer.Ptr() + parse_ret, m_buffer.Len() - parse_ret))
             break;
     }
+    ProxyController::GetController().CallRequestCallback(m_buffer.Ptr(), m_buffer.Len());
 }
 
 void ProxyWorker::TransferResponse()
@@ -460,7 +493,7 @@ void ProxyWorker::TransferResponse()
         {
             parse_ret = m_response.Parse(m_buffer.Ptr(), m_buffer.Len());
             if (parse_ret == PARSE_WRONG_FORMAT)
-                throw ProxyException(HTTP_FORMAT_ERROR, __FUNCTION__);
+                throw ProxyException(PWE_HTTP_FORMAT_ERROR, __FUNCTION__);
             else if (parse_ret == PARSE_IMCOMPLETE_HEADER)
                 continue;
 
@@ -470,6 +503,7 @@ void ProxyWorker::TransferResponse()
         if (IsHttpDataCompleted(m_response.header, m_buffer.Ptr() + parse_ret, m_buffer.Len() - parse_ret))
             break;
     }
+    ProxyController::GetController().CallResponseCallback(m_buffer.Ptr(), m_buffer.Len());
 }
 
 bool ProxyWorker::IsKeepAlive()
@@ -505,13 +539,15 @@ bool ProxyWorker::IsKeepAlive()
 
 void ProxyWorker::Run()
 {
+    m_running = true;
     try
     {
         RecvCompleteRequest();
         sndebug("> " << m_request.method << " " << m_request.uri.ToString(true))
         if (m_request.method == "CONNECT")
         {
-            if ( m_request.uri.scheme == "https" || m_request.uri.port == 443 )
+            if ( m_request.uri.scheme == "https"
+                || (m_request.uri.scheme == "" && m_request.uri.port == 443 ) )
                 m_bssl = true;
             MethodConnect();
             RecvCompleteRequest();
@@ -541,7 +577,7 @@ void ProxyWorker::Run()
     }
     catch(ProxyException& e)
     {
-        if (e.code() == SSL_ERROR)
+        if (e.code() == PWE_SSL_ERROR)
         {
             unsigned long ulErr = ERR_get_error();
             char szErrMsg[1024] = {0};
@@ -549,13 +585,17 @@ void ProxyWorker::Run()
             pTmp = ERR_error_string(ulErr,szErrMsg);
             sndebug("ssl error: " << " code: " << ulErr << " " << pTmp << " " << e.what())
         }
-        else if (e.code() == SOCKET_ERROR)
+        else if (e.code() == PWE_SOCKET_ERROR)
         {
             sndebug("socket error: " << strerror(errno) << " " << e.what())
         }
-        else if (e.code() == CONNECTION_SHUT_DOWN)
+        else if (e.code() == PWE_CONNECTION_SHUT_DOWN)
         {
             sndebug("connection shut dwon. " << e.what())
+        }
+        else if (e.code() == PWE_HTTP_FORMAT_ERROR)
+        {
+            sndebug("http fomat error: " << std::string(m_buffer.Ptr(), m_buffer.Len()) << std::endl << e.what())
         }
         else
         {
@@ -566,4 +606,6 @@ void ProxyWorker::Run()
     {
         sndebug("Unknow Exception")
     }
+
+    m_running = false;
 }

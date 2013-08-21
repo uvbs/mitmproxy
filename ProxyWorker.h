@@ -13,18 +13,18 @@ typedef struct ssl_st SSL;
 struct ssl_ctx_st;
 typedef struct ssl_ctx_st SSL_CTX;
 
-class ProxyWorker
+class ProxyWorker: boost::noncopyable
 {
 public:
     enum PROXY_WOKER_ERROR
     {
         PROXY_WOKER_ERROR_BASE = 100,
-        CONNECTION_SHUT_DOWN,
-        SOCKET_ERROR,
-        SSL_ERROR,
-        RECV_TIMEOUT,
-        DNS_FAILED,
-        HTTP_FORMAT_ERROR,
+        PWE_CONNECTION_SHUT_DOWN,
+        PWE_SOCKET_ERROR,
+        PWE_SSL_ERROR,
+        PWE_RECV_TIMEOUT,
+        PWE_DNS_FAILED,
+        PWE_HTTP_FORMAT_ERROR,
     };
 
     enum DIRECTION
@@ -37,6 +37,8 @@ public:
     ProxyWorker(int clientsock);
     ProxyWorker(int clientsock, size_t sn);
     ~ProxyWorker();
+    inline bool IsRunning() {return m_running;}
+    void ShutDown();
     static void InitSSLCtx();
     static void DeleteSSLCtx();
     void Run();
@@ -63,7 +65,7 @@ private:
     struct ResponseHeader m_response;
     bool m_bssl;
     bool m_ssl_inited;
-    bool m_wanna_stop;
+    bool m_running;
     static SSL_CTX* m_ctx;
     static boost::mutex m_ctx_mutex;
     SSL* m_clientssl;
